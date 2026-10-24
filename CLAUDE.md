@@ -616,7 +616,7 @@ Mounted in `server/src/main.rs` as `/auth` and `/api`.
 | Prefix | Purpose |
 |---|---|
 | `/auth` | OAuth callbacks & session lifecycle |
-| `/api/library` | Manga library CRUD, reading progression (`reading_status`, dates, `times_read`; `POST /{mal_id}/reread`), edition status (`publication_status`) |
+| `/api/library` | Manga library CRUD, reading progression (`reading_status`, dates, `times_read`; `POST /{mal_id}/reread`), edition status (`publication_status`), collection status (`collection_status`) |
 | `/api/volume` | Volume tracking (including 飛 `wanted` — a tome deliberately skipped), bulk marks, upcoming volumes, loans (`/loans`, `/loans/borrowed`, append-only ledger at `/loans/history`, spreadsheet at `/loans/export.csv?from&to`), physical copy (condition, location, extra copies, bought on, `isbn`, and 附 the box extras `has_obi` / `has_jacket` / `has_slipcase` — what the copy still has, asked apart from the grade because a mint copy can still have lost its obi); the full list answers its revision in `X-Volume-Rev` and `?since=<rev>` answers only what changed (see Delta refresh above) |
 | `/api/authors` | Author records, photos, refresh |
 | `/api/external` | `search?q=` (MAL + MangaDex merged), and 源 `mal/{id}`, `mal/{id}/recommendations`, `mal/{id}/characters` — what the browser used to fetch from Jikan itself, now from whichever upstream the operator configured |
@@ -729,6 +729,25 @@ stateless), so an AI client can read and curate one account's collection.
   reach the server (`useUpdateMangaMeta`'s destructure, its `fields`
   map, `enqueueLibraryPatch`, the outbox flush's request builder);
   miss one and the interface accepts the value and loses it.
+- `user_libraries.collection_status` (収) is **whether the reader is still
+  collecting the series**, a manual override on top of the
+  ownership-derived Ongoing / Wishlist / Complete: `paused`, `dropped`,
+  or NULL for Automatic (follow ownership, exactly as before). It is
+  separate from `reading_status` (the story) and `publication_status`
+  (the publisher), and it changes *where a series is listed* and nothing
+  else — never a volume, its ownership, price, reading data or `wanted`
+  flag. Paused and Dropped leave the Ongoing and Wishlist filters (and the
+  public wishlist, via `users::wishlist_gate_open`) and the gap
+  suggestions, and appear under the dashboard's 止 Stopped tab and in All.
+  Dropped alone leaves the completion percentage and the finished-series
+  counts (`computeLibraryStats`, the snapshot capture, the seals) and is
+  never "Complete"; its owned / total stays the physical count. The
+  vocabulary is `models::library::COLLECTION_STATUSES` and
+  `client/src/lib/collectionStatus.js`, the shelf rules are in
+  `client/src/lib/shelfStatus.js`. Only `apply_library_patch` writes it
+  (refreshes from MAL / MangaDex set named columns and never touch it),
+  it passes the same four client whitelists as `publication_status`, and
+  a `replace` import keeps the live value when the bundle carries none.
 - A place can carry a **photo of the shelf itself** (`locations.photo_updated_at`
 + a blob at `uploads/places/{user}/{id}.jpg`). The date is the
 cache-buster: the URL is stable, so without `?v=` a replacement photo
