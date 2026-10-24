@@ -57,6 +57,11 @@ pub struct Model {
     /// MyAnimeList tracks. `None` means "no opinion" and behaves
     /// exactly as before. See `PUBLICATION_STATUSES`.
     pub publication_status: Option<String>,
+    /// 収 · Whether the reader is still collecting the series:
+    /// `paused` / `dropped`, or NULL for Automatic (follow ownership).
+    /// A pure override — it never touches volumes, ownership or reading
+    /// data. See `COLLECTION_STATUSES`.
+    pub collection_status: Option<String>,
 }
 
 /// The five reading states a series can be in, by hand or derived.
@@ -67,6 +72,26 @@ pub const READING_STATUSES: [&str; 5] = ["planned", "reading", "paused", "comple
 /// volumes; `completed` and `stopped` do not, which is what the
 /// calendar and the gap suggestions read.
 pub const PUBLICATION_STATUSES: [&str; 4] = ["ongoing", "paused", "completed", "stopped"];
+
+/// 収 · The two ways a reader can set a series aside. There is no value
+/// for "collecting": that is NULL (Automatic), where Ongoing, Wishlist
+/// and Complete keep following the tomes on the shelf.
+pub const COLLECTION_STATUSES: [&str; 2] = ["paused", "dropped"];
+
+/// Has the reader set the series aside, for now or for good? Such a
+/// series is not "being collected" and not a wish either, so the
+/// Ongoing and Wishlist views and the public wishlist leave it out.
+pub fn collection_is_stopped(status: Option<&str>) -> bool {
+    matches!(status, Some("paused") | Some("dropped"))
+}
+
+/// Has the reader stopped collecting the series for good? Such a series
+/// is left out of the "active collection" figures — the completion
+/// percentage and the count of finished series — while its tomes still
+/// count as owned.
+pub fn collection_is_dropped(status: Option<&str>) -> bool {
+    status == Some("dropped")
+}
 
 /// Is this edition finished, one way or the other? A series nobody will
 /// print another volume of should not be advertised as nearly complete,
@@ -93,6 +118,26 @@ pub fn normalize_reading_status(
         Err(crate::errors::AppError::BadRequest(format!(
             "Unknown reading status '{raw}' (expected one of {}).",
             READING_STATUSES.join(", ")
+        )))
+    }
+}
+
+/// Same contract as `normalize_reading_status`, for the collection
+/// override. `None`, empty and whitespace-only mean Automatic.
+pub fn normalize_collection_status(
+    raw: Option<String>,
+) -> Result<Option<String>, crate::errors::AppError> {
+    let Some(raw) = raw else { return Ok(None) };
+    let value = raw.trim().to_ascii_lowercase();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if COLLECTION_STATUSES.contains(&value.as_str()) {
+        Ok(Some(value))
+    } else {
+        Err(crate::errors::AppError::BadRequest(format!(
+            "Unknown collection status '{raw}' (expected one of {}).",
+            COLLECTION_STATUSES.join(", ")
         )))
     }
 }
@@ -237,6 +282,8 @@ pub struct LibraryEntry {
     pub times_read: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publication_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collection_status: Option<String>,
     /// Embedded author summary — None when the row has no recorded
     /// author OR when the FK target was deleted. Constructed by the
     /// service layer's enrichment pass (single batched lookup over
@@ -278,6 +325,7 @@ impl From<Model> for LibraryEntry {
             finished_reading_at: row.finished_reading_at,
             times_read: row.times_read,
             publication_status: row.publication_status,
+            collection_status: row.collection_status,
             // Author is filled in by the service layer's enrichment
             // pass — `From<Model>` alone can't JOIN. Default None
             // here; the listing services collect distinct author_ids,
@@ -435,12 +483,57 @@ pub struct UpdateLibraryRequest {
     /// 版 · The edition's own status — see `PUBLICATION_STATUSES`.
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub publication_status: Option<Option<String>>,
+    /// 収 · The collection override, three-state like `publisher`:
+    /// omitted → leave, `null`/"" → back to Automatic, value → validate + set.
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub collection_status: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_optional_date")]
     pub started_reading_at: Option<Option<chrono::NaiveDate>>,
     #[serde(default, deserialize_with = "deserialize_optional_date")]
     pub finished_reading_at: Option<Option<chrono::NaiveDate>>,
     /// Plain `Option<i32>` — a count has no "clear" state, 0 is it.
     pub times_read: Option<i32>,
+}
+
+impl UpdateLibraryRequest {
+    /// Does the patch carry anything for the library row itself, as
+    /// opposed to the tome count alone? Both write paths ask this to skip
+    /// a round-trip (and the realtime fan-out) for a patch that changes
+    /// nothing.
+    ///
+    /// The destructuring is exhaustive on purpose: a field added to the
+    /// request without being listed here stops compiling, instead of
+    /// becoming a patch that is saved and never announced to the reader's
+    /// other devices (as `publication_status` was).
+    pub fn touches_row(&self) -> bool {
+        let Self {
+            volumes: _,
+            publisher,
+            edition,
+            genres,
+            review,
+            review_public,
+            author,
+            reading_status,
+            publication_status,
+            collection_status,
+            started_reading_at,
+            finished_reading_at,
+            times_read,
+        } = self;
+        publisher.is_some()
+            || edition.is_some()
+            || genres.is_some()
+            || review.is_some()
+            || review_public.is_some()
+            || author.is_some()
+            || reading_status.is_some()
+            || publication_status.is_some()
+            || collection_status.is_some()
+            || started_reading_at.is_some()
+            || finished_reading_at.is_some()
+            || times_read.is_some()
+    }
 }
 
 /// Three-state deserializer for `YYYY-MM-DD` dates.
@@ -565,5 +658,115 @@ mod publication_status_tests {
         assert!(!edition_is_closed(Some("paused")));
         // No opinion behaves exactly as before the column existed.
         assert!(!edition_is_closed(None));
+    }
+}
+
+#[cfg(test)]
+mod collection_status_tests {
+    use super::{
+        COLLECTION_STATUSES, collection_is_dropped, collection_is_stopped,
+        normalize_collection_status,
+    };
+
+    #[test]
+    fn accepts_both_states_and_clears_on_empty() {
+        for state in COLLECTION_STATUSES {
+            assert_eq!(
+                normalize_collection_status(Some(state.to_string())).unwrap(),
+                Some(state.to_string())
+            );
+        }
+        assert_eq!(
+            normalize_collection_status(Some("  Dropped ".into())).unwrap(),
+            Some("dropped".into())
+        );
+        // Empty means Automatic, which is the default state.
+        assert_eq!(normalize_collection_status(Some("".into())).unwrap(), None);
+        assert_eq!(
+            normalize_collection_status(Some("  ".into())).unwrap(),
+            None
+        );
+        assert_eq!(normalize_collection_status(None).unwrap(), None);
+    }
+
+    #[test]
+    fn refuses_a_state_it_does_not_know() {
+        // "automatic" is the absence of a value, not a value: a client
+        // that sends the word is told so instead of storing it.
+        for invented in ["automatic", "collecting", "stopped", "on hold"] {
+            assert!(
+                normalize_collection_status(Some(invented.to_string())).is_err(),
+                "{invented:?} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn paused_and_dropped_are_both_stopped() {
+        assert!(collection_is_stopped(Some("paused")));
+        assert!(collection_is_stopped(Some("dropped")));
+        assert!(!collection_is_stopped(None));
+    }
+
+    #[test]
+    fn only_dropped_leaves_the_active_collection() {
+        assert!(collection_is_dropped(Some("dropped")));
+        assert!(!collection_is_dropped(Some("paused")));
+        assert!(!collection_is_dropped(None));
+    }
+}
+
+#[cfg(test)]
+mod update_request_tests {
+    use super::UpdateLibraryRequest;
+
+    fn patch(json: serde_json::Value) -> UpdateLibraryRequest {
+        serde_json::from_value(json).unwrap()
+    }
+
+    #[test]
+    fn an_empty_patch_touches_no_row() {
+        assert!(!patch(serde_json::json!({})).touches_row());
+        // The tome count alone is the volumes path's business.
+        assert!(!patch(serde_json::json!({ "volumes": 12 })).touches_row());
+    }
+
+    /// Regression: a patch carrying only `publication_status` used to be
+    /// judged empty by the realtime guard, so the write landed and the
+    /// reader's other devices were never told to refetch.
+    #[test]
+    fn every_row_field_counts_alone_including_the_two_edition_statuses() {
+        for body in [
+            serde_json::json!({ "publisher": "Glénat" }),
+            serde_json::json!({ "edition": null }),
+            serde_json::json!({ "genres": ["Action"] }),
+            serde_json::json!({ "review": "" }),
+            serde_json::json!({ "review_public": true }),
+            serde_json::json!({ "author": "Oda" }),
+            serde_json::json!({ "reading_status": "paused" }),
+            serde_json::json!({ "publication_status": "stopped" }),
+            serde_json::json!({ "publication_status": null }),
+            serde_json::json!({ "collection_status": "dropped" }),
+            serde_json::json!({ "collection_status": "" }),
+            serde_json::json!({ "collection_status": null }),
+            serde_json::json!({ "started_reading_at": "2026-01-02" }),
+            serde_json::json!({ "finished_reading_at": null }),
+            serde_json::json!({ "times_read": 2 }),
+        ] {
+            assert!(patch(body.clone()).touches_row(), "{body} should count");
+        }
+    }
+
+    #[test]
+    fn collection_status_distinguishes_absent_from_clear() {
+        assert!(patch(serde_json::json!({})).collection_status.is_none());
+        assert_eq!(
+            patch(serde_json::json!({ "collection_status": null })).collection_status,
+            Some(None)
+        );
+        assert_eq!(
+            patch(serde_json::json!({ "collection_status": "paused" })).collection_status,
+            Some(Some("paused".to_string()))
+        );
     }
 }

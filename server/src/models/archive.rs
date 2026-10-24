@@ -122,6 +122,12 @@ pub struct ExportSeries {
     pub reading_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publication_status: Option<String>,
+    /// 収 · `paused` / `dropped`; absent means Automatic. A bundle from
+    /// before the field existed is therefore indistinguishable from an
+    /// Automatic one, which is why a replace-restore leaves the live
+    /// series' value alone when this is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_reading_at: Option<chrono::NaiveDate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -306,6 +312,20 @@ mod wire_tests {
         assert_eq!(v.loaned_to, None);
         assert_eq!(v.release_date, None);
         assert_eq!(v.origin, None);
+    }
+
+    #[test]
+    fn collection_status_round_trips_and_a_v1_bundle_has_none() {
+        let mut s: ExportSeries = serde_json::from_str(V1_SERIES).unwrap();
+        assert_eq!(s.collection_status, None);
+        // Automatic is not written out, so a file without the field and
+        // an Automatic one are the same thing.
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(!json.contains("collection_status"));
+        s.collection_status = Some("dropped".into());
+        let json = serde_json::to_string(&s).unwrap();
+        let back: ExportSeries = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.collection_status.as_deref(), Some("dropped"));
     }
 
     #[test]

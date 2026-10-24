@@ -209,6 +209,7 @@ pub async fn feed(db: &Db, follower_id: i32, limit: u64) -> Result<Vec<FeedEntry
         actor_wishlist_until: Option<chrono::DateTime<chrono::Utc>>,
         entry_genres: Option<String>,
         entry_volumes_owned: Option<i32>,
+        entry_collection_status: Option<String>,
     }
 
     let stmt = Query::select()
@@ -260,6 +261,10 @@ pub async fn feed(db: &Db, follower_id: i32, limit: u64) -> Result<Vec<FeedEntry
         .expr_as(
             Expr::col((library_mod::Entity, library_mod::Column::VolumesOwned)),
             Alias::new("entry_volumes_owned"),
+        )
+        .expr_as(
+            Expr::col((library_mod::Entity, library_mod::Column::CollectionStatus)),
+            Alias::new("entry_collection_status"),
         )
         .from(activity::Entity)
         .inner_join(
@@ -338,6 +343,7 @@ pub async fn feed(db: &Db, follower_id: i32, limit: u64) -> Result<Vec<FeedEntry
                 },
                 &genres,
                 owned,
+                r.entry_collection_status.as_deref(),
                 now,
             )
         })
@@ -496,6 +502,7 @@ pub async fn compute_overlap(db: &Db, user_id: i32) -> Result<OverlapResponse, A
             &owner.into(),
             &genres,
             row.volumes_owned,
+            row.collection_status.as_deref(),
             now,
         ) {
             continue;

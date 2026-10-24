@@ -192,6 +192,7 @@ pub async fn build_export(db: &Db, user: &User) -> Result<ExportBundle, AppError
             modified_on: Some(row.modified_on),
             reading_status: row.reading_status,
             publication_status: row.publication_status,
+            collection_status: row.collection_status,
             started_reading_at: row.started_reading_at,
             finished_reading_at: row.finished_reading_at,
             times_read: row.times_read,
@@ -731,10 +732,25 @@ pub async fn apply_import_merge(
             }
             continue;
         }
+        // 収 · A replace deletes the live row and writes the bundle's. A
+        // bundle that says nothing about the collection status (one made
+        // before the field existed, or an Automatic series) must not
+        // silently put a Paused or Dropped series back to Automatic, so
+        // the live value is read first and carried over.
+        let mut carried_collection_status: Option<String> = None;
         if let Some(live_mal) = existing_mal {
             preview.replaced += 1;
             if !dry_run {
                 let mal = live_mal;
+                if series.collection_status.is_none() {
+                    carried_collection_status = LibraryEntity::find()
+                        .filter(library::Column::UserId.eq(user.id))
+                        .filter(library::Column::MalId.eq(mal))
+                        .one(&txn)
+                        .await
+                        .map_err(AppError::from)?
+                        .and_then(|row| row.collection_status);
+                }
                 crate::services::volume::delete_all_for_user_by_mal_id_tx(&txn, user.id, mal)
                     .await?;
                 CoffretEntity::delete_many()
@@ -883,6 +899,10 @@ pub async fn apply_import_merge(
                 series.reading_status.clone(),
             )
             .unwrap_or(None)),
+            collection_status: Set(imported_collection_status(
+                series.collection_status.clone(),
+                carried_collection_status,
+            )),
             started_reading_at: Set(series.started_reading_at),
             finished_reading_at: Set(series.finished_reading_at),
             times_read: Set(series.times_read.max(0)),
@@ -1152,6 +1172,52 @@ pub async fn apply_import_merge(
     }
 
     Ok(preview)
+}
+
+/// 収 · The collection status a restored series ends up with: the
+/// bundle's when it names a valid one, otherwise the value the live series
+/// had (carried over by a replace, `None` for a series that is new here).
+/// A bundle is attacker-authored, so an unknown status is dropped rather
+/// than failing the import — and never lets a replace silently put a
+/// Paused or Dropped series back to Automatic.
+fn imported_collection_status(bundle: Option<String>, live: Option<String>) -> Option<String> {
+    crate::models::library::normalize_collection_status(bundle)
+        .unwrap_or(None)
+        .or(live)
+}
+
+#[cfg(test)]
+mod collection_status_import_tests {
+    use super::imported_collection_status;
+
+    fn s(v: &str) -> Option<String> {
+        Some(v.to_string())
+    }
+
+    #[test]
+    fn a_bundle_that_says_nothing_keeps_what_the_live_series_had() {
+        assert_eq!(imported_collection_status(None, s("dropped")), s("dropped"));
+        assert_eq!(imported_collection_status(None, s("paused")), s("paused"));
+        // An unusable value is the same as no value.
+        assert_eq!(
+            imported_collection_status(s("bogus"), s("paused")),
+            s("paused")
+        );
+    }
+
+    #[test]
+    fn a_bundle_that_names_a_status_wins() {
+        assert_eq!(
+            imported_collection_status(s("paused"), s("dropped")),
+            s("paused")
+        );
+        assert_eq!(imported_collection_status(s("Dropped"), None), s("dropped"));
+    }
+
+    #[test]
+    fn a_new_series_without_a_status_is_automatic() {
+        assert_eq!(imported_collection_status(None, None), None);
+    }
 }
 
 #[cfg(test)]
