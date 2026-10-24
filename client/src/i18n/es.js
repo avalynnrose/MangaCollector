@@ -1381,6 +1381,13 @@ export default {
     currencyUSD: "Dólar estadounidense",
     currencyEUR: "Euro",
     currencyJPY: "Yen japonés",
+    currencyConfirmTitle: "¿Cambiar a {code}?",
+    currencyConfirmBody:
+      "{count} precios guardados conservan exactamente los mismos números. No se convierten: solo cambian el símbolo y los decimales.",
+    currencyConfirmBodyOne:
+      "1 precio guardado conserva exactamente el mismo número. No se convierte: solo cambian el símbolo y los decimales.",
+    currencyConfirmExample: "Un precio mostrado como {before} se mostrará como {after}.",
+    currencyConfirmAction: "Cambiar a {code}",
     currencyNoConversion:
       "Cambiar la moneda solo cambia cómo se escriben los importes. Los precios guardados nunca se convierten.",
     titleLanguage: "Idioma del título",

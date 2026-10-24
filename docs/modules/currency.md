@@ -21,6 +21,11 @@ Prices are stored as `DECIMAL(12,2)` in `user_volumes.price` (and `coffrets.pric
 the display currency changes the symbol and the number of decimals shown and nothing else: 1200 stays 1200. There is no
 exchange-rate code anywhere. The settings screen says so under the picker.
 
+Because a number that reads `$12.50` today and `¥13` tomorrow can look like a conversion, the settings page asks first
+when this device's synced copy of the library holds any price above zero (volumes or boxsets): it states how many prices
+there are, that they are not converted, and shows the first one written both ways. With no saved price the switch is
+immediate, and choosing the currency already in use does nothing (`client/src/lib/currencySwitch.js`).
+
 A zero-decimal currency rounds **for display only** (a stored `12.50` reads `¥13` in JPY). The price inputs use
 `step="1"` in JPY (`priceInputStep`) so the browser refuses fractions in the first place.
 
