@@ -194,6 +194,39 @@ describe("enqueueLibraryPatch", () => {
 
   const payload = async () => (await db.outboxLibrary.get(2)).payload;
 
+  // 収 · The collection status has to pass every list a library field
+  // passes (the hook, the normaliser here, the request builder), and a
+  // patch about anything else must not carry it, or a stale value would
+  // overwrite the server's.
+  describe("collection_status", () => {
+    it("is written to the row and the payload, normalised", async () => {
+      await enqueueLibraryPatch(2, { collection_status: "dropped" });
+      expect((await db.library.get(2)).collection_status).toBe("dropped");
+      expect((await payload()).collection_status).toBe("dropped");
+    });
+
+    it("clears to Automatic with an empty string, as null", async () => {
+      await enqueueLibraryPatch(2, { collection_status: "paused" });
+      await enqueueLibraryPatch(2, { collection_status: "" });
+      expect((await db.library.get(2)).collection_status).toBeNull();
+      expect((await payload()).collection_status).toBeNull();
+    });
+
+    it("is not sent, and not touched, by a patch about something else", async () => {
+      await db.library.update(2, { collection_status: "dropped" });
+      await enqueueLibraryPatch(2, { publisher: "Glénat" });
+      expect("collection_status" in (await payload())).toBe(false);
+      expect((await db.library.get(2)).collection_status).toBe("dropped");
+    });
+
+    it("survives a reading-status change on the same series", async () => {
+      await enqueueLibraryPatch(2, { collection_status: "paused" });
+      await enqueueLibraryPatch(2, { reading_status: "reading" });
+      expect((await db.library.get(2)).collection_status).toBe("paused");
+      expect((await payload()).collection_status).toBe("paused");
+    });
+  });
+
   it.each(["publisher", "edition", "review"])("trims %s", async (key) => {
     await enqueueLibraryPatch(2, { [key]: "  Glénat  " });
     expect((await payload())[key]).toBe("Glénat");
@@ -602,6 +635,25 @@ describe("flushing the library queue", () => {
       expect.anything(),
     );
     await expect(db.outboxLibrary.get(2)).resolves.toBeUndefined();
+  });
+
+  it("sends the collection status in the PATCH body", async () => {
+    await db.library.put(manga());
+    await enqueueLibraryPatch(2, { collection_status: "dropped" });
+    await syncOutbox({ force: true });
+    expect(axios.patch).toHaveBeenCalledWith(
+      "/api/user/library/2",
+      expect.objectContaining({ collection_status: "dropped" }),
+      expect.anything(),
+    );
+  });
+
+  it("sends a cleared collection status as null, not as an omission", async () => {
+    await db.library.put(manga());
+    await enqueueLibraryPatch(2, { collection_status: "" });
+    await syncOutbox({ force: true });
+    const body = axios.patch.mock.calls.find((c) => c[0] === "/api/user/library/2")[1];
+    expect(body).toHaveProperty("collection_status", null);
   });
 
   it("still sends a plain owned count on its own", async () => {

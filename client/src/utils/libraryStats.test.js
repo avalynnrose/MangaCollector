@@ -23,6 +23,8 @@ describe("computeLibraryStats", () => {
       totalVolumes: 0,
       totalOwned: 0,
       seriesComplete: 0,
+      activeOwned: 0,
+      activeVolumes: 0,
       completionPct: 0,
       completionRate: 0,
       topGenres: [],
@@ -263,5 +265,77 @@ describe("with volumes the reader skipped", () => {
       skippedByMal: new Map([[999, 5]]),
     });
     expect(out.totalVolumes).toBe(12);
+  });
+});
+
+/*
+ * 収 · A dropped series leaves the percentage and the finished-series
+ * count, and nothing else: what is on the shelf is still on the shelf.
+ */
+describe("computeLibraryStats and the collection status", () => {
+  const library = (extra) => [
+    { volumes: 10, volumes_owned: 10 },
+    { volumes: 10, volumes_owned: 5 },
+    ...extra,
+  ];
+
+  it("keeps a dropped series' tomes in the physical totals", () => {
+    const stats = computeLibraryStats(
+      library([{ volumes: 20, volumes_owned: 5, collection_status: "dropped" }]),
+    );
+    expect(stats.seriesCount).toBe(3);
+    expect(stats.totalOwned).toBe(20);
+    expect(stats.totalVolumes).toBe(40);
+  });
+
+  it("leaves a dropped series out of the percentage, on both sides", () => {
+    const stats = computeLibraryStats(
+      library([{ volumes: 20, volumes_owned: 5, collection_status: "dropped" }]),
+    );
+    // 15 of 20 for the two series still being collected, not 20 of 40.
+    expect(stats.activeOwned).toBe(15);
+    expect(stats.activeVolumes).toBe(20);
+    expect(stats.completionPct).toBe(75);
+    expect(stats.completionRate).toBe(75);
+  });
+
+  it("does not count a dropped series as completed", () => {
+    const stats = computeLibraryStats(
+      library([{ volumes: 8, volumes_owned: 8, collection_status: "dropped" }]),
+    );
+    expect(stats.seriesComplete).toBe(1);
+    expect(stats.totalOwned).toBe(23);
+  });
+
+  it("does not let a dropped series raise the percentage either", () => {
+    const stats = computeLibraryStats([
+      { volumes: 10, volumes_owned: 5 },
+      { volumes: 10, volumes_owned: 10, collection_status: "dropped" },
+    ]);
+    expect(stats.completionPct).toBe(50);
+  });
+
+  it("keeps a paused series in every figure, since it is expected back", () => {
+    const stats = computeLibraryStats(
+      library([{ volumes: 20, volumes_owned: 5, collection_status: "paused" }]),
+    );
+    expect(stats.activeVolumes).toBe(40);
+    expect(stats.completionPct).toBe(50);
+  });
+
+  it("reads 0 rather than NaN when every series is dropped", () => {
+    const stats = computeLibraryStats([
+      { volumes: 10, volumes_owned: 5, collection_status: "dropped" },
+    ]);
+    expect(stats.activeVolumes).toBe(0);
+    expect(stats.completionPct).toBe(0);
+    expect(stats.totalOwned).toBe(5);
+  });
+
+  it("is unchanged for a library with no status set", () => {
+    const stats = computeLibraryStats(library([]));
+    expect(stats.completionPct).toBe(75);
+    expect(stats.activeOwned).toBe(stats.totalOwned);
+    expect(stats.activeVolumes).toBe(stats.totalVolumes);
   });
 });

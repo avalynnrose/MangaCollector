@@ -35,7 +35,9 @@ import { useAllVolumes } from "@/hooks/useVolumes.js";
 import { useStreak } from "@/hooks/useStreak.js";
 import { filterAdultGenreIfNeeded } from "@/utils/library.js";
 import { DEFAULT_SORT, normalizeSort, sortLibrary } from "@/utils/librarySort.js";
-import { seriesIsComplete, skippedCounts, wantedVolumes } from "@/lib/gaps.js";
+import { skippedCounts } from "@/lib/gaps.js";
+import { isStopped } from "@/lib/collectionStatus.js";
+import { isComplete, isOngoing, isWishlist } from "@/lib/shelfStatus.js";
 import { computeLibraryStats } from "@/utils/libraryStats.js";
 import { useLang, useT } from "@/i18n/index.jsx";
 import { announce } from "@/lib/announce.js";
@@ -109,10 +111,13 @@ export default function Dashboard() {
   const [query, setQuery] = useState(() => persisted?.query ?? "");
   const [filter, setFilter] = useState(() => persisted?.filter ?? "all");
   // filter ∈ "all" | "inprogress" | "wishlist" | "complete" | "tsundoku"
+  //          | "upcoming" | "stopped"
   //   inprogress → at least one owned volume but not all (vraiment "en cours")
   //   wishlist   → tracked but zero volumes acquired (願 · negai)
   //   complete   → every tracked volume owned
   //   tsundoku   → at least one owned-but-unread volume
+  //   stopped    → paused or dropped by the reader (収 collection status);
+  //                those leave inprogress and wishlist, never "all"
   // The filters are mutually exclusive; "inprogress" used to also catch
   // wishlist series (owned === 0), which made the ladder ambiguous. The
   // new contract gives wishlist its own bucket.
@@ -351,13 +356,24 @@ export default function Dashboard() {
   // three different answers for the same shelf; they all read the same
   // numbers now.
   const stats = useMemo(() => {
-    const { seriesCount, totalOwned, totalVolumes, seriesComplete } =
-      computeLibraryStats(library, { skippedByMal });
+    const {
+      seriesCount,
+      totalOwned,
+      totalVolumes,
+      seriesComplete,
+      activeVolumes,
+      completionPct,
+    } = computeLibraryStats(library, { skippedByMal });
     return {
       series: seriesCount,
       owned: totalOwned,
       total: totalVolumes,
       complete: seriesComplete,
+      // 収 · The percentage covers the collection still being built: a
+      // dropped series stays in `owned` / `total` (what is on the shelf)
+      // but leaves the progress figure.
+      activeTotal: activeVolumes,
+      pct: completionPct,
     };
   }, [library, skippedByMal]);
 
@@ -391,32 +407,29 @@ export default function Dashboard() {
       // wishlist rank but layered with a creation-age guard.
       const cutoff = Date.now() - 365 * DAY_MS;
       result = result.filter(
-        (m) =>
-          (m.volumes_owned ?? 0) === 0 &&
-          (m.volumes ?? 0) > 0 &&
-          parseTs(m.created_on) < cutoff,
+        (m) => isWishlist(m) && parseTs(m.created_on) < cutoff,
       );
     } else if (filter === "complete") {
       result = result.filter((m) =>
-        seriesIsComplete(m, skippedByMal.get(m.mal_id) ?? 0),
+        isComplete(m, skippedByMal.get(m.mal_id) ?? 0),
       );
     } else if (filter === "inprogress") {
       // Genuinely in flight: at least one owned volume, but not all of
       // them. Series with no published total (volumes === 0) also count
       // here as long as the user owns something — they're objectively
-      // "being collected".
-      result = result.filter((m) => {
-        const o = m.volumes_owned ?? 0;
-        const tot = wantedVolumes(m, skippedByMal.get(m.mal_id) ?? 0);
-        return o > 0 && (tot === 0 || o < tot);
-      });
+      // "being collected". A paused or dropped series is not (収).
+      result = result.filter((m) =>
+        isOngoing(m, skippedByMal.get(m.mal_id) ?? 0),
+      );
     } else if (filter === "wishlist") {
       // 願 · tracked, none owned yet. Requires a known total so we never
       // confuse a freshly-imported custom series (no published count) with
-      // a deliberate wishlist intent.
-      result = result.filter(
-        (m) => (m.volumes_owned ?? 0) === 0 && (m.volumes ?? 0) > 0,
-      );
+      // a deliberate wishlist intent. A paused or dropped one is no wish.
+      result = result.filter((m) => isWishlist(m));
+    } else if (filter === "stopped") {
+      // 止 · Paused or dropped by the reader — kept off Ongoing and
+      // Wishlist, still on the shelf, listed here and in All.
+      result = result.filter((m) => isStopped(m));
     } else if (filter === "tsundoku") {
       // Tsundoku (積読) = series with ≥1 owned-but-unread volume.
       result = result.filter((m) => (tsundokuByMal.get(m.mal_id) ?? 0) > 0);
@@ -617,9 +630,7 @@ export default function Dashboard() {
               <RibbonStat
                 label={t("dashboard.progress")}
                 value={
-                  stats.total
-                    ? `${Math.round((stats.owned / stats.total) * 100)}%`
-                    : "—"
+                  stats.activeTotal ? `${stats.pct}%` : "—"
                 }
                 accent="hanko"
                 loading={isInitialLoad}
@@ -772,6 +783,12 @@ export default function Dashboard() {
                     glyph: "来",
                     label: t("dashboard.tabUpcoming"),
                     tooltip: `${t("dashboard.tabUpcoming")} · ${t("dashboard.tabHintUpcoming")}`,
+                  },
+                  {
+                    id: "stopped",
+                    glyph: "止",
+                    label: t("dashboard.tabStopped"),
+                    tooltip: `${t("dashboard.tabStopped")} · ${t("dashboard.tabHintStopped")}`,
                   },
                 ].map((tab) => {
                   const active = filter === tab.id;

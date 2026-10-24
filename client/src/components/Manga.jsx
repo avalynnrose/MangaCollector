@@ -5,6 +5,12 @@ import { hasToBlurImage } from "@/utils/library.js";
 import { coverTransitionName, navigateWithCover } from "@/lib/viewTransition.js";
 import { prefetchMangaPage } from "@/lib/prefetch.js";
 import { haptics } from "@/lib/haptics.js";
+import {
+  collectionBadgeTone,
+  collectionOption,
+  isDropped,
+  isStopped,
+} from "@/lib/collectionStatus.js";
 import { useT, useLang } from "@/i18n/index.jsx";
 
 const LONG_PRESS_MS = 500;
@@ -45,7 +51,12 @@ function Manga({
   const total = manga.volumes ?? 0;
   const completion = total > 0 ? Math.min(100, (owned / total) * 100) : 0;
   const blur = hasToBlurImage(manga, adult_content_level);
-  const complete = total > 0 && owned >= total;
+  // 収 · A series the reader paused or dropped is listed apart from
+  // Ongoing and Wishlist; a dropped one is never "complete", whatever it
+  // holds. Counts, bar and ownership are untouched.
+  const stopped = isStopped(manga);
+  const stoppedOption = stopped ? collectionOption(manga.collection_status) : null;
+  const complete = total > 0 && owned >= total && !isDropped(manga);
   // 来 · "Caught up · next volume coming" surfacing.
   //
   // The most useful upcoming-info moment for a reader is the one
@@ -72,7 +83,7 @@ function Manga({
   // "complete". Surfaced with a sakura accent so the user can spot the gap
   // between intent and acquisition at a glance, and so the sort/filter
   // grammar on the dashboard can target it explicitly.
-  const wishlist = total > 0 && owned === 0;
+  const wishlist = total > 0 && owned === 0 && !stopped;
 
   // Long-press timer + start coords — touch-side path for entering
   // selection mode without a Cmd key. Cancels on movement past the
@@ -301,6 +312,10 @@ function Manga({
         )}
 
         {/* Status badge (top-right) — mutually exclusive ladder.
+            PAUSED / DROPPED : gold / grey pill + 留 / 降. The reader's own
+                       override (収) comes first, so a paused series with
+                       every tome still says it is paused; the full bar
+                       and counter keep saying it is complete.
             COMPLETE : solid moegi pill + ✓.   Achievement state, loud.
             ONGOING  : hanko outline + ◐.      In-flight, neutral mid-tone.
             WISHLIST : sakura outline + 願.    Wanted but no volume yet.
@@ -308,7 +323,22 @@ function Manga({
             Without the wishlist tier, a 0 / 14 series rendered visually
             identical to a 1 / 14 — the only cue was the bottom counter,
             and that's the easiest spot to overlook. */}
-        {complete ? (
+        {stoppedOption ? (
+          <div
+            className={`absolute top-2 right-2 flex items-center gap-1 rounded-full border bg-ink-0/85 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider shadow-[0_1px_3px_rgba(10,9,8,0.4)] backdrop-blur ${collectionBadgeTone(stoppedOption.id)}`}
+          >
+            {/* 留 / 降 · The reader set this series aside. Own mark and
+                own word per state, so paused and dropped never read the
+                same, and neither borrows the reading or edition kanji. */}
+            <span
+              className="font-jp text-[11px] font-bold leading-none"
+              aria-hidden="true"
+            >
+              {stoppedOption.glyph}
+            </span>
+            {t(stoppedOption.key)}
+          </div>
+        ) : complete ? (
           <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-gradient-to-br from-moegi to-moegi-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink-0 shadow-md">
             <svg
               viewBox="0 0 24 24"
@@ -395,7 +425,15 @@ function Manga({
                   shelf is still empty (wishlist), hanko otherwise. Keeps
                   "0" from reading as a danger-red signal on the wishlist
                   state — the rose tone is closer to "wanted" than "wrong". */}
-              <span className={wishlist ? "text-sakura" : "text-hanko-bright"}>
+              <span
+                className={
+                  wishlist
+                    ? "text-sakura"
+                    : stopped
+                      ? "text-washi-muted"
+                      : "text-hanko-bright"
+                }
+              >
                 {owned}
               </span>
               <span className="text-washi-dim"> / {total || "?"}</span>
@@ -427,7 +465,9 @@ function Manga({
                   className={`meter-fill h-full transition-all duration-500 ${
                     complete
                       ? "bg-gradient-to-r from-moegi to-moegi-muted"
-                      : "bg-gradient-to-r from-hanko to-hanko-bright"
+                      : stopped
+                        ? "bg-washi/40"
+                        : "bg-gradient-to-r from-hanko to-hanko-bright"
                   }`}
                   style={{ width: `${completion}%` }}
                 />

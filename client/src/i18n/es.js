@@ -372,6 +372,7 @@ export default {
     tabComplete: "Completos",
     tabTsundoku: "Tsundoku",
     tabUpcoming: "Próximos",
+    tabStopped: "Detenidas",
     filterTablistLabel: "Filtrar biblioteca por estado",
     tabHintWishlist:
       "series que sigues sin haber adquirido todavía ningún tomo",
@@ -379,6 +380,8 @@ export default {
       "el placer tranquilo de las pilas sin leer — series con al menos un tomo en posesión pero aún sin leer",
     tabHintUpcoming:
       "series con al menos un tomo anunciado todavía sin publicar",
+    tabHintStopped:
+      "series en pausa o abandonadas — siguen en la estantería, fuera de En curso y Por adquirir",
     lensLabel: "Filtros temporales",
     lensRecent: "Reciente",
     lensRecentHint: "añadido en los últimos 30 días",
@@ -484,6 +487,17 @@ export default {
     readingStatusDropped: "Abandonada",
     readingStatusNone: "Sin empezar",
     readingStatusHint: "a mano, o siguiendo los tomos que marques como leídos",
+    // 収 · ¿Se sigue coleccionando la serie? Aparte de leerla (読) y de lo
+    // que hace la editorial (版).
+    collectionStatusLabel: "COLECCIÓN · 収",
+    collectionStatusLabelPlain: "Colección",
+    collectionStatusAutomatic: "Automático",
+    collectionStatusPaused: "En pausa",
+    collectionStatusDropped: "Abandonada",
+    collectionStatusHintAutomatic:
+      "sigue los tomos que tienes — En curso, Por adquirir o Completa",
+    collectionStatusHintSet:
+      "se queda en la estantería con cada tomo, precio y fecha de lectura, pero sale de En curso y Por adquirir y de las sugerencias de tomos que faltan. Elige Automático para deshacerlo.",
     readingStarted: "Empezada",
     readingFinished: "Terminada",
     readingTimesRead: "Leída {n} veces",

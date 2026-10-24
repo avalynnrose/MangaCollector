@@ -4,18 +4,23 @@
  * Pure, so it can be tested without React Query or Dexie: the hook
  * (`useGapSuggestions`) only feeds it the two tables.
  *
- * Two kinds of series are left out, and both are about not asking a
- * reader for something they cannot do:
+ * Three kinds of series are left out, and all are about not asking a
+ * reader for something they cannot or no longer want to do:
  *
  *   - an edition the reader marked **discontinued**. Its volume count
  *     still comes from MyAnimeList, which counts the Japanese original,
  *     so a French run stopped at ten of twenty-five reads as fifteen
  *     missing volumes — fifteen books nobody will ever print. Concluded
  *     and paused editions stay: those gaps are real and fillable.
+ *   - a series the reader **paused or dropped** (`collection_status`).
+ *     They chose to stop buying it; offering its missing volumes would
+ *     be asking again for what they declined. Their volumes are untouched
+ *     and the series comes back the moment the override is cleared.
  *   - volumes the reader deliberately skipped (`wanted === false`).
  *     A tome nobody wants is not a gap; counting it keeps a shelf
  *     permanently at 94 %.
  */
+import { isStopped } from "@/lib/collectionStatus.js";
 
 /** Volumes of `malId` the reader owns, as a set of numbers. */
 function ownedByMal(volumes) {
@@ -47,6 +52,7 @@ export function gapSuggestions(library, volumes, limit = 4) {
   const suggestions = [];
   for (const m of library) {
     if (m.publication_status === "stopped") continue;
+    if (isStopped(m)) continue;
     const total = m.volumes ?? 0;
     if (total <= 0) continue;
     // 完 · The series' own counter, which arrives with the library and

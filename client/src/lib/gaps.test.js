@@ -51,6 +51,25 @@ describe("gapSuggestions", () => {
     expect(gapSuggestions(library, owned(1, [1, 2]))).toEqual([]);
   });
 
+  it("leaves out a series the reader paused or dropped", () => {
+    // 収 · They chose to stop buying it; its missing volumes are not a
+    // suggestion. The volumes themselves are untouched.
+    for (const status of ["paused", "dropped"]) {
+      const library = [series({ collection_status: status })];
+      expect(gapSuggestions(library, owned(1, [1, 2]))).toEqual([]);
+    }
+  });
+
+  it("offers a series again once the override is cleared", () => {
+    for (const status of [null, undefined]) {
+      const out = gapSuggestions(
+        [series({ collection_status: status })],
+        owned(1, [1, 2]),
+      );
+      expect(out).toHaveLength(1);
+    }
+  });
+
   it("keeps a concluded or paused edition — those gaps are fillable", () => {
     for (const status of ["completed", "paused", "ongoing", null, undefined]) {
       const out = gapSuggestions(

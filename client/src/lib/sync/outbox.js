@@ -216,6 +216,15 @@ export async function enqueueLibraryPatch(mal_id, fields) {
       ? String(fields.publication_status)
       : null;
   }
+  // 収 · The collection override. Empty means Automatic (NULL on the
+  // server). Whitelisted in this normaliser and in the request builder:
+  // a field missing from either is set in the interface and lost on
+  // the way.
+  if ("collection_status" in fields) {
+    next.collection_status = fields.collection_status
+      ? String(fields.collection_status)
+      : null;
+  }
   for (const key of ["started_reading_at", "finished_reading_at"]) {
     if (!(key in fields)) continue;
     next[key] = fields[key] ? String(fields[key]).slice(0, 10) : null;
@@ -1090,6 +1099,7 @@ async function flushLibrary(touched) {
         for (const key of [
           "reading_status",
           "publication_status",
+          "collection_status",
           "started_reading_at",
           "finished_reading_at",
           "times_read",
