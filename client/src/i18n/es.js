@@ -1380,6 +1380,9 @@ export default {
     currencyPreview: "Vista previa",
     currencyUSD: "Dólar estadounidense",
     currencyEUR: "Euro",
+    currencyJPY: "Yen japonés",
+    currencyNoConversion:
+      "Cambiar la moneda solo cambia cómo se escriben los importes. Los precios guardados nunca se convierten.",
     titleLanguage: "Idioma del título",
     titleBody: "Qué título se prefiere cuando MAL ofrece alternativas.",
     titleDefault: "Por defecto (MAL)",

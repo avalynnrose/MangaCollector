@@ -1363,6 +1363,9 @@ export default {
     currencyPreview: "Preview",
     currencyUSD: "US Dollar",
     currencyEUR: "Euro",
+    currencyJPY: "Japanese Yen",
+    currencyNoConversion:
+      "Changing the currency only changes how amounts are written. Stored prices are never converted.",
     titleLanguage: "Title language",
     titleBody: "Which title is preferred when MAL provides alternatives.",
     titleDefault: "Default (MAL)",

@@ -44,6 +44,7 @@ const THEME_OPTION_VALUES = [
 const CURRENCY_FORMATS = {
   USD: { code: "USD", symbol: "$", separator: ",", decimal: ".", precision: 2, format: "!#", negativePattern: "-!#" },
   EUR: { code: "EUR", symbol: "€", separator: " ", decimal: ",", precision: 2, format: "#!", negativePattern: "-#!" },
+  JPY: { code: "JPY", symbol: "¥", separator: ",", decimal: ".", precision: 0, format: "!#", negativePattern: "-!#" },
 };
 
 // 章 · The four chapters of the settings tome. Each chapter pairs a
