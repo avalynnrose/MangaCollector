@@ -740,8 +740,10 @@ stateless), so an AI client can read and curate one account's collection.
   public wishlist, via `users::wishlist_gate_open`) and the gap
   suggestions, and appear under the dashboard's 止 Stopped tab and in All.
   Dropped alone leaves the completion percentage and the finished-series
-  counts (`computeLibraryStats`, the snapshot capture, the seals) and is
-  never "Complete"; its owned / total stays the physical count. The
+  counts (`computeLibraryStats`, the per-author / per-publisher figures,
+  the snapshot capture, the seals, MCP `library_stats`) and is never
+  "Complete"; its owned / total and every inventory count stay the
+  physical truth. The
   vocabulary is `models::library::COLLECTION_STATUSES` and
   `client/src/lib/collectionStatus.js`, the shelf rules are in
   `client/src/lib/shelfStatus.js`. Only `apply_library_patch` writes it
