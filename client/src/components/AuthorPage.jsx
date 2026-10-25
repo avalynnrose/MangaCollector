@@ -17,6 +17,7 @@ import CoverImage from "./ui/CoverImage.jsx";
 import Modal from "./ui/Modal.jsx";
 import SettingsContext from "@/SettingsContext.js";
 import { useT, useLang } from "@/i18n/index.jsx";
+import { isDropped } from "@/lib/collectionStatus.js";
 
 /**
  * 作家 Sakka · Author monograph.
@@ -979,7 +980,7 @@ function PosterCard({ manga, index, adult_content_level, onOpen, t }) {
   const owned = manga.volumes_owned ?? 0;
   const pct = total > 0 ? Math.round((owned / total) * 100) : 0;
   const blurred = hasToBlurImage(manga, adult_content_level);
-  const isComplete = total > 0 && owned >= total;
+  const isComplete = total > 0 && owned >= total && !isDropped(manga);
 
   return (
     <button

@@ -1407,6 +1407,46 @@ fn flip_author_name(raw: &str) -> String {
  *  読 · Reading progression — derived from the volume rows, overridable.
  * ══════════════════════════════════════════════════════════════════ */
 
+/// The headline counts the MCP `library_stats` tool reports, as a pure
+/// function of the rows so the rule can be tested without a database.
+///
+/// Inventory and completion are kept apart (収): `volumes_tracked` and
+/// `volumes_owned` count every series, a dropped one included, because
+/// those tomes are on the shelf; `series_complete` counts only series
+/// still being collected, since one the reader dropped is no longer a
+/// collection they are finishing. The same rule as the screens.
+pub fn library_totals(rows: &[LibraryEntry]) -> serde_json::Value {
+    let mut by_status: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut tracked: i64 = 0;
+    let mut owned: i64 = 0;
+    let mut complete = 0usize;
+    for row in rows {
+        *by_status
+            .entry(
+                row.reading_status
+                    .clone()
+                    .unwrap_or_else(|| "unset".to_string()),
+            )
+            .or_default() += 1;
+        tracked += i64::from(row.volumes.max(0));
+        owned += i64::from(row.volumes_owned.max(0));
+        if row.volumes > 0
+            && row.volumes_owned >= row.volumes
+            && !crate::models::library::collection_is_dropped(row.collection_status.as_deref())
+        {
+            complete += 1;
+        }
+    }
+    serde_json::json!({
+        "series": rows.len(),
+        "series_complete": complete,
+        "volumes_tracked": tracked,
+        "volumes_owned": owned,
+        "by_reading_status": by_status,
+    })
+}
+
 /// The series-level reading fields, as a plain value the pure rule below
 /// can reason about without a database.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1663,5 +1703,69 @@ mod reading_tests {
         );
         let planned = st(Some("planned"), None, None);
         assert_eq!(next_reading_state(&planned, 0, 12, d(TODAY)), planned);
+    }
+}
+
+#[cfg(test)]
+mod library_totals_tests {
+    use super::library_totals;
+    use crate::models::library::{LibraryEntry, Model};
+
+    fn entry(volumes: i32, owned: i32, status: Option<&str>) -> LibraryEntry {
+        let now = chrono::Utc::now();
+        Model {
+            id: 1,
+            created_on: now,
+            modified_on: now,
+            user_id: 1,
+            mal_id: Some(1),
+            name: "Test".into(),
+            volumes,
+            volumes_owned: owned,
+            image_url_jpg: None,
+            genres: None,
+            mangadex_id: None,
+            publisher: None,
+            edition: None,
+            review: None,
+            review_public: false,
+            author_id: None,
+            reading_status: None,
+            started_reading_at: None,
+            finished_reading_at: None,
+            times_read: 0,
+            publication_status: None,
+            collection_status: status.map(String::from),
+        }
+        .into()
+    }
+
+    #[test]
+    fn a_dropped_series_is_inventory_but_never_complete() {
+        let rows = [
+            entry(10, 10, None),
+            entry(10, 4, None),
+            entry(8, 8, Some("dropped")),
+            entry(20, 5, Some("dropped")),
+        ];
+        let out = library_totals(&rows);
+        assert_eq!(out["series"], 4);
+        assert_eq!(out["series_complete"], 1);
+        // Everything on the shelf still counts as tracked and owned.
+        assert_eq!(out["volumes_tracked"], 48);
+        assert_eq!(out["volumes_owned"], 27);
+    }
+
+    #[test]
+    fn a_paused_series_is_still_complete_when_everything_is_owned() {
+        let out = library_totals(&[entry(6, 6, Some("paused")), entry(6, 2, Some("paused"))]);
+        assert_eq!(out["series_complete"], 1);
+    }
+
+    #[test]
+    fn a_library_without_statuses_counts_as_before() {
+        let out = library_totals(&[entry(5, 5, None), entry(0, 0, None)]);
+        assert_eq!(out["series_complete"], 1);
+        assert_eq!(out["by_reading_status"]["unset"], 2);
     }
 }
