@@ -328,7 +328,7 @@ impl McMcp {
     }
 
     #[tool(
-        description = "Counts across the whole library: how many series, how many tomes are tracked and how many of those are owned, the split by reading status, and how many series are complete. These are row counts, not estimates — no prices, no percentages whose definition could be argued with.",
+        description = "Counts across the whole library: how many series, how many tomes are tracked and how many of those are owned, the split by reading status, and how many series are complete (a series you dropped never counts as complete, though its tomes still count as tracked and owned). These are row counts, not estimates — no prices, no percentages whose definition could be argued with.",
         annotations(title = "Library stats", read_only_hint = true, idempotent_hint = true)
     )]
     async fn library_stats(
@@ -344,34 +344,7 @@ impl McMcp {
         // disagrees with the screen is worse than one that says less.
         let stats = library::get_user_library(&self.state.db, call.user_id())
             .await
-            .map(|rows| {
-                let mut by_status: std::collections::BTreeMap<String, usize> =
-                    std::collections::BTreeMap::new();
-                let mut tracked: i64 = 0;
-                let mut owned: i64 = 0;
-                let mut complete = 0usize;
-                for row in &rows {
-                    *by_status
-                        .entry(
-                            row.reading_status
-                                .clone()
-                                .unwrap_or_else(|| "unset".to_string()),
-                        )
-                        .or_default() += 1;
-                    tracked += i64::from(row.volumes.max(0));
-                    owned += i64::from(row.volumes_owned.max(0));
-                    if row.volumes > 0 && row.volumes_owned >= row.volumes {
-                        complete += 1;
-                    }
-                }
-                serde_json::json!({
-                    "series": rows.len(),
-                    "series_complete": complete,
-                    "volumes_tracked": tracked,
-                    "volumes_owned": owned,
-                    "by_reading_status": by_status,
-                })
-            });
+            .map(|rows| library::library_totals(&rows));
         call.finish(stats).await
     }
 

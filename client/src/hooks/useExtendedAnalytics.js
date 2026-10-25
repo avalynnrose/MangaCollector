@@ -1,4 +1,5 @@
 import { useDeferredValue, useMemo } from "react";
+import { isDropped } from "@/lib/collectionStatus.js";
 
 /**
  * 帳 · Extended analytics bundle for the deep-dive StatsPage.
@@ -10,6 +11,9 @@ import { useDeferredValue, useMemo } from "react";
  * Returns:
  *   - authors             top-N by owned volumes (with completion %)
  *   - publishers          top-N by owned volumes + per-publisher completion
+ *                         (a dropped series counts in `ownedVolumes` and
+ *                         `seriesCount`, not in the completion %: the reader
+ *                         stopped collecting it, 収)
  *   - readingDelay        avg days from add → first read across read volumes
  *   - dokuhaRatio         { read, total } — series fully read vs fully owned
  *   - topVolumePrices     top-5 most expensive owned volumes
@@ -87,8 +91,12 @@ export function useExtendedAnalytics({
       if (!series) continue;
       // Series stats — used by the per-author/publisher completion %.
       // Pre-cache to avoid recomputing on every volume.
-      const seriesTotal = series.volumes ?? 0;
-      const seriesOwned = series.volumes_owned ?? 0;
+      // 収 · A dropped series stays in the inventory (owned volumes,
+      // series count, posters) but is no longer part of the collection
+      // being completed, so it adds nothing to either side of the %.
+      const dropped = isDropped(series);
+      const seriesTotal = dropped ? 0 : (series.volumes ?? 0);
+      const seriesOwned = dropped ? 0 : (series.volumes_owned ?? 0);
 
       const authorName = series.author?.name?.trim();
       if (authorName) {
@@ -199,6 +207,9 @@ export function useExtendedAnalytics({
     for (const m of lib) {
       if ((m.volumes ?? 0) <= 0) continue;
       if ((m.volumes_owned ?? 0) < (m.volumes ?? 0)) continue;
+      // 収 · A dropped series is never "complete", so it is not one of
+      // the fully owned series the ratio is taken over.
+      if (isDropped(m)) continue;
       fullyOwnedCount += 1;
       const ownedVols = ownedBySeries.get(m.mal_id) ?? [];
       // Edge case: legacy rows where `volumes_owned >= volumes` but

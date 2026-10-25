@@ -134,7 +134,11 @@ pub async fn get_public_poster(
         .wishlist_public_until
         .map(|t| t > chrono::Utc::now())
         .unwrap_or(false);
-    if !wishlist_open && entry.volumes_owned == 0 {
+    if !users::wishlist_gate_open(
+        wishlist_open,
+        entry.volumes_owned,
+        entry.collection_status.as_deref(),
+    ) {
         return Err(AppError::NotFound("Poster not found".into()));
     }
 

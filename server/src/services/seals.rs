@@ -228,7 +228,10 @@ async fn compute_stats(db: &Db, user_id: i32) -> Result<Stats, AppError> {
     stats.series_count = libraries.len() as i64;
     let mut genres: HashSet<String> = HashSet::new();
     for row in &libraries {
-        if row.volumes > 0 && row.volumes_owned >= row.volumes {
+        if row.volumes > 0
+            && row.volumes_owned >= row.volumes
+            && !crate::models::library::collection_is_dropped(row.collection_status.as_deref())
+        {
             stats.complete_series += 1;
         }
         if let Some(raw) = &row.genres {

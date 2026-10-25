@@ -69,7 +69,12 @@ async fn compute_capture_stats(
         series_count += 1;
         total_volumes = total_volumes.saturating_add(r.volumes);
         total_owned = total_owned.saturating_add(r.volumes_owned);
-        if r.volumes > 0 && r.volumes_owned >= r.volumes {
+        // A dropped series is not part of the collection being
+        // completed, whatever it holds. Its tomes still count as owned.
+        if r.volumes > 0
+            && r.volumes_owned >= r.volumes
+            && !crate::models::library::collection_is_dropped(r.collection_status.as_deref())
+        {
             series_complete += 1;
         }
     }

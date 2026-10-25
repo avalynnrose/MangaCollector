@@ -205,7 +205,27 @@ pub(crate) fn entry_publicly_visible(
     entry: &LibraryEntry,
     now: chrono::DateTime<chrono::Utc>,
 ) -> bool {
-    row_publicly_visible(&owner.into(), &entry.genres, entry.volumes_owned, now)
+    row_publicly_visible(
+        &owner.into(),
+        &entry.genres,
+        entry.volumes_owned,
+        entry.collection_status.as_deref(),
+        now,
+    )
+}
+
+/// 願 · May a series show on a public surface as far as the wishlist
+/// rule goes? One owned tome is enough. A series with nothing owned is a
+/// wish, shown only while Birthday mode is open — and only if the reader
+/// is still wishing for it: one they paused or dropped is not a wish, so
+/// it stays private even then.
+pub(crate) fn wishlist_gate_open(
+    wishlist_open: bool,
+    volumes_owned: i32,
+    collection_status: Option<&str>,
+) -> bool {
+    volumes_owned > 0
+        || (wishlist_open && !crate::models::library::collection_is_stopped(collection_status))
 }
 
 /// The two owner columns the gate above reads, detached from the row
@@ -225,7 +245,7 @@ impl From<&User> for OwnerVisibility {
     }
 }
 
-/// The same rule, over the four values it actually reads.
+/// The same rule, over the five values it actually reads.
 ///
 /// The social surfaces (`follow::feed`, `follow::compute_overlap`) walk
 /// raw `library` rows in bulk and have no `LibraryEntry` to hand —
@@ -237,11 +257,12 @@ pub(crate) fn row_publicly_visible(
     owner: &OwnerVisibility,
     genres: &[String],
     volumes_owned: i32,
+    collection_status: Option<&str>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> bool {
     let adult_ok = owner.show_adult || !entry_is_adult(genres);
     let wishlist_open = owner.wishlist_until.map(|t| t > now).unwrap_or(false);
-    let wishlist_ok = wishlist_open || volumes_owned > 0;
+    let wishlist_ok = wishlist_gate_open(wishlist_open, volumes_owned, collection_status);
     adult_ok && wishlist_ok
 }
 
@@ -300,7 +321,13 @@ pub async fn build_public_profile(
         // Wishlist filter — only owned (volumes_owned > 0) entries
         // are visible when Birthday mode is closed. A wishlist entry
         // (0 owned) only passes when the horizon is open.
-        .filter(|entry| wishlist_open || entry.volumes_owned > 0)
+        .filter(|entry| {
+            wishlist_gate_open(
+                wishlist_open,
+                entry.volumes_owned,
+                entry.collection_status.as_deref(),
+            )
+        })
         .collect();
 
     // Volumes — sweep once for stats + per-series bookkeeping.
@@ -874,7 +901,11 @@ mod tests {
 
     fn visible(o: &OwnerVisibility, genres: &[&str], owned: i32) -> bool {
         let genres: Vec<String> = genres.iter().map(|g| g.to_string()).collect();
-        row_publicly_visible(o, &genres, owned, now())
+        row_publicly_visible(o, &genres, owned, None, now())
+    }
+
+    fn visible_as(o: &OwnerVisibility, owned: i32, status: &str) -> bool {
+        row_publicly_visible(o, &[], owned, Some(status), now())
     }
 
     #[test]
@@ -911,5 +942,24 @@ mod tests {
         assert!(!visible(&lapsed, &["Action"], 0));
         // …but it never hid a series the user actually owns.
         assert!(visible(&lapsed, &["Action"], 1));
+    }
+
+    #[test]
+    fn a_paused_or_dropped_wish_stays_private_even_while_birthday_mode_is_open() {
+        let open = owner(false, Some(7));
+        for status in ["paused", "dropped"] {
+            assert!(!visible_as(&open, 0, status), "{status} with nothing owned");
+        }
+        // Automatic keeps behaving as before.
+        assert!(visible(&open, &["Action"], 0));
+    }
+
+    #[test]
+    fn a_stopped_series_that_has_tomes_is_shown_like_any_owned_one() {
+        // The override hides a wish, not a shelf: what is owned stays
+        // visible exactly as it was.
+        for status in ["paused", "dropped"] {
+            assert!(visible_as(&owner(false, None), 5, status));
+        }
     }
 }

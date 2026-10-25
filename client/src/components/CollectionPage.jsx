@@ -10,6 +10,7 @@ import { computeDoubles } from "@/utils/libraryStats.js";
 import { useCollection } from "@/hooks/useCollection.js";
 import { hasToBlurImage } from "@/utils/library.js";
 import { useT } from "@/i18n/index.jsx";
+import { isDropped } from "@/lib/collectionStatus.js";
 
 /**
  * 出版 Shuppan / 版 Han · Per-publisher / per-edition filtered
@@ -532,7 +533,7 @@ function PosterCard({ manga, index, adult_content_level, onOpen, t }) {
   const owned = manga.volumes_owned ?? 0;
   const pct = total > 0 ? Math.round((owned / total) * 100) : 0;
   const blurred = hasToBlurImage(manga, adult_content_level);
-  const isComplete = total > 0 && owned >= total;
+  const isComplete = total > 0 && owned >= total && !isDropped(manga);
 
   return (
     <button

@@ -12,7 +12,9 @@
  *     totalVolumes,     // sum of `volumes`
  *     totalOwned,       // sum of `volumes_owned`
  *     seriesComplete,   // count of series with volumes_owned >= wanted volumes (and > 0)
- *     completionPct,    // round((totalOwned / totalVolumes) * 100), 0 when totalVolumes is 0
+ *     completionPct,    // round((activeOwned / activeVolumes) * 100), 0 when activeVolumes is 0
+ *     activeOwned,      // owned tomes of the series still being collected
+ *     activeVolumes,    // wanted tomes of the series still being collected
  *     topGenres,        // sorted [{ name, count }] capped at `topGenresLimit`
  *   }
  *
@@ -21,10 +23,19 @@
  * published tome, which is what every caller did before the column
  * existed.
  *
+ * 収 · A series the reader dropped (`collection_status`) has stopped
+ * being part of the collection they are completing: it leaves the
+ * completion percentage, on both sides, and is never counted among the
+ * finished series. Its tomes still count in `totalOwned` /
+ * `totalVolumes` — those are what is physically on the shelf, and 5 / 20
+ * stays 5 / 20. A paused series stays in everything: it is expected back.
+ *
  * `topGenres` counts at the SERIES level — "genres this corpus
  * touches", not "genres weighted by volume count". `name`s are
  * trimmed; empty strings dropped.
  */
+import { isDropped } from "@/lib/collectionStatus.js";
+
 export function computeLibraryStats(
   rows,
   { topGenresLimit = 6, skippedByMal = null } = {},
@@ -34,6 +45,8 @@ export function computeLibraryStats(
   let totalVolumes = 0;
   let totalOwned = 0;
   let seriesComplete = 0;
+  let activeOwned = 0;
+  let activeVolumes = 0;
   const genreFreq = new Map();
 
   for (const m of list) {
@@ -46,7 +59,11 @@ export function computeLibraryStats(
     const o = m?.volumes_owned ?? 0;
     totalVolumes += v;
     totalOwned += o;
-    if (v > 0 && o >= v) seriesComplete += 1;
+    if (!isDropped(m)) {
+      activeOwned += o;
+      activeVolumes += v;
+      if (v > 0 && o >= v) seriesComplete += 1;
+    }
     for (const g of m?.genres ?? []) {
       const trimmed = String(g).trim();
       if (!trimmed) continue;
@@ -55,7 +72,7 @@ export function computeLibraryStats(
   }
 
   const completionPct =
-    totalVolumes > 0 ? Math.round((totalOwned / totalVolumes) * 100) : 0;
+    activeVolumes > 0 ? Math.round((activeOwned / activeVolumes) * 100) : 0;
   // 率 · The same fraction to one decimal, for the surfaces that show it
   // large enough to earn one. Derived here rather than recomputed at the
   // call site so "61 %" and "61,4 %" can never disagree about which
@@ -64,8 +81,8 @@ export function computeLibraryStats(
   // different denominators, and printed three different answers for one
   // shelf.
   const completionRate =
-    totalVolumes > 0
-      ? Number(((totalOwned / totalVolumes) * 100).toFixed(1))
+    activeVolumes > 0
+      ? Number(((activeOwned / activeVolumes) * 100).toFixed(1))
       : 0;
 
   const topGenres = Array.from(genreFreq.entries())
@@ -78,6 +95,8 @@ export function computeLibraryStats(
     totalVolumes,
     totalOwned,
     seriesComplete,
+    activeOwned,
+    activeVolumes,
     completionPct,
     completionRate,
     topGenres,

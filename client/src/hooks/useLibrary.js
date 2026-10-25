@@ -133,6 +133,7 @@ export function useUpdateMangaMeta() {
       review_public,
       author,
       publication_status,
+      collection_status,
       reading_status,
       started_reading_at,
       finished_reading_at,
@@ -161,6 +162,10 @@ export function useUpdateMangaMeta() {
       // first attempt.
       if (publication_status !== undefined)
         fields.publication_status = publication_status;
+      // 収 · Whether the reader is still collecting the series — the
+      // fifth gate of that list. Empty string / null is Automatic.
+      if (collection_status !== undefined)
+        fields.collection_status = collection_status;
       if (review !== undefined) fields.review = review;
       if (review_public !== undefined) fields.review_public = review_public;
       if (author !== undefined) fields.author = author;

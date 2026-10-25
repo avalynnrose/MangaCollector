@@ -47,7 +47,8 @@ way in with the rule the live write path applies: cover URLs through
 `library::clamp_volumes` (0..=10 000), `condition` through
 `normalize_condition`, `isbn` through `util::isbn::normalize_isbn13`,
 `extra_copies` clamped to 0..=99, `reading_status` through
-`normalize_reading_status`, `times_read` floored at 0. Anything that
+`normalize_reading_status`, `collection_status` through
+`normalize_collection_status`, `times_read` floored at 0. Anything that
 fails is dropped, never fatal. A borrower is re-linked only to an
 account the importer follows.
 
@@ -73,7 +74,7 @@ human reader and are ignored on import (`build_export` writes them,
 `review?`, `review_public`, `author?` (the *name* — author ids are per
 instance; the importer resolves the text through
 `author::resolve_author_from_text_tx`), `created_on?`, `modified_on?`,
-`reading_status?`, `started_reading_at?`, `finished_reading_at?`,
+`reading_status?`, `publication_status?`, `collection_status?` (`paused` / `dropped`; absent is Automatic), `started_reading_at?`, `finished_reading_at?`,
 `times_read`, `volumes_detail[]`, `coffrets[]`.
 
 `ExportVolume`: `vol_num`, `owned`, `price?`, `store?`, `collector`,
@@ -292,6 +293,8 @@ bundle to `/api/user/import`.
   (DB default `manual`); missing `created_on` / `modified_on` become
   `now()` (a v1 bundle turns into "added today"); an unknown
   `condition` or `reading_status` is dropped rather than rejected;
+  a `replace` import keeps the live series' `collection_status` when the
+  bundle names none (an older bundle must not silently un-pause a series);
   `volumes_owned` is clamped to `volumes`.
 - **External bundles have no volume rows.** `volumes_detail` is empty,
   so the importer synthesises `1..=volumes` and marks the first

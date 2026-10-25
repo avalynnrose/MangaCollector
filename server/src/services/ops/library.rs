@@ -193,17 +193,7 @@ pub async fn update_manga(
     origin: Option<String>,
 ) -> Result<(), AppError> {
     let touches_volumes = body.volumes.is_some();
-    let is_noop = body.volumes.is_none()
-        && body.publisher.is_none()
-        && body.edition.is_none()
-        && body.genres.is_none()
-        && body.review.is_none()
-        && body.review_public.is_none()
-        && body.author.is_none()
-        && body.reading_status.is_none()
-        && body.started_reading_at.is_none()
-        && body.finished_reading_at.is_none()
-        && body.times_read.is_none();
+    let is_noop = body.volumes.is_none() && !body.touches_row();
 
     library::apply_library_patch(&state.db, mal_id, user_id, body).await?;
 

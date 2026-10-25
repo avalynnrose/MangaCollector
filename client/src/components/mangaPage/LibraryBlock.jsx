@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useT } from "@/i18n/index.jsx";
 import ReadingProgress from "./ReadingProgress.jsx";
+import CollectionStatus from "./CollectionStatus.jsx";
 
 /**
  * LibraryBlock — 蔵書 (zōsho, "books conserved").
@@ -281,6 +282,10 @@ export default function LibraryBlock({
       {/* 読 · Series-level reading progression — status, dates and the
           read-again action, directly editable (no edit mode). */}
       <ReadingProgress series={series} />
+
+      {/* 収 · Whether the reader is still collecting the series —
+          Automatic, Paused or Dropped. Saved on click, like the above. */}
+      <CollectionStatus series={series} />
 
       {/* Total-volumes editor — moved here from the old Collection block
           now that the two blocks are merged. Only rendered in edit mode;

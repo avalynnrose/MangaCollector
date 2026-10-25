@@ -368,12 +368,15 @@ export default {
     tabComplete: "Complete",
     tabTsundoku: "Tsundoku",
     tabUpcoming: "Upcoming",
+    tabStopped: "Stopped",
     filterTablistLabel: "Filter library by status",
     tabHintWishlist: "series you're tracking but haven't started owning yet",
     tabHintTsundoku:
       "the quiet joy of unread piles — series with at least one acquired-but-unread volume",
     tabHintUpcoming:
       "series with at least one announced volume that hasn't shipped yet",
+    tabHintStopped:
+      "series you paused or dropped — still on the shelf, off Ongoing and Wishlist",
     lensLabel: "Time-based lenses",
     lensRecent: "Recent",
     lensRecentHint: "added in the last 30 days",
@@ -479,6 +482,17 @@ export default {
     readingStatusDropped: "Dropped",
     readingStatusNone: "Not started",
     readingStatusHint: "set by hand, or let it follow the tomes you mark read",
+    // 収 · Whether the reader is still collecting the series — apart
+    // from reading it (読) and from what the publisher does (版).
+    collectionStatusLabel: "COLLECTING · 収",
+    collectionStatusLabelPlain: "Collecting",
+    collectionStatusAutomatic: "Automatic",
+    collectionStatusPaused: "Paused",
+    collectionStatusDropped: "Dropped",
+    collectionStatusHintAutomatic:
+      "follows the tomes you own — Ongoing, Wishlist or Complete",
+    collectionStatusHintSet:
+      "kept on the shelf with every tome, price and reading date, but left off Ongoing and Wishlist and out of gap suggestions. Pick Automatic to undo.",
     readingStarted: "Started",
     readingFinished: "Finished",
     readingTimesRead: "Read through {n}×",
